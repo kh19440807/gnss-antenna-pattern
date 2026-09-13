@@ -7,10 +7,26 @@ import unittest
 
 import numpy as np
 
-from combined_patterns import merge_nodes, merge_spatial_nodes, interpolate_nodes
+from combined_patterns import merge_nodes, merge_spatial_nodes, pattern_coordinates, interpolate_nodes
 
 
 class CombinedTests(unittest.TestCase):
+    def test_polar_coordinates_retain_weak_bins(self):
+        # Weak dB responses must remain visible; compare ENU axes and both
+        # radial scales without substituting interpolated points for observations.
+        rows = [dict(azimuth_deg=a, elevation_deg=e, relative_gain_db=g)
+                for a, e, g in [(0, 0, 0), (90, 0, -20), (0, 90, -30), (270, 30, -40)]]
+        az, el, gain, floor, xyz, power = pattern_coordinates(rows)
+        self.assertEqual(xyz.shape, (3, len(rows)))
+        self.assertEqual(floor, -50)
+        np.testing.assert_allclose(np.linalg.norm(xyz, axis=0), [1, .6, .4, .2])
+        np.testing.assert_allclose(np.linalg.norm(power, axis=0), [1, .01, .001, .0001])
+        np.testing.assert_allclose(xyz[:, 0], [0, 1, 0], atol=1e-14)
+        np.testing.assert_allclose(xyz[:, 1], [.6, 0, 0], atol=1e-14)
+        np.testing.assert_allclose(xyz[:, 2], [0, 0, .4], atol=1e-14)
+        with self.assertRaises(ValueError):
+            pattern_coordinates([dict(rows[0], relative_gain_db=float('nan'))])
+
     def test_spatial_merge(self):
         # Equal azimuth alone must not collapse distinct elevation bins.
         # North's circular seam is equivalent, and all five systems contribute.

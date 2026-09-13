@@ -61,32 +61,98 @@ def merge_spatial_nodes(patterns):
     return result
 
 
-def draw_pattern_3d(rows, out, title):
-    """Plot observed direction bins in local east/north/up coordinates.
+def pattern_coordinates(rows):
+    """Prepare all observed bins without sampling or collapsing weak responses.
 
-    Radius is relative power 10**(gain_dB/10), not field amplitude. Colour
-    encodes gain in dB. Use identical axis limits for every signal and the
-    combined estimate, preserving missing directions as gaps in a scatter
-    plot rather than filling them with an unsupported surface.
+    The dB display radius is (gain - floor) / (0 - floor), where floor is
+    a negative multiple of 10 dB below every observation. This affine scale
+    is purely graphical, not a physical power ratio. Retain the linear-power
+    radius separately for comparison. All angles follow local ENU convention.
+    """
+    if not rows:
+        raise ValueError('No direction bins to plot')
+    az = np.radians([float(r['azimuth_deg']) for r in rows])
+    el = np.radians([float(r['elevation_deg']) for r in rows])
+    gain = np.array([float(r['relative_gain_db']) for r in rows])
+    if not np.all(np.isfinite(np.r_[az, el, gain])) or np.any((el < 0) | (el > np.pi / 2)):
+        raise ValueError('3D plot requires finite values and elevations in [0, 90] degrees')
+    if np.any(gain > 0):
+        raise ValueError('3D plot requires peak-normalized gains <= 0 dB')
+    floor = 10 * math.floor(min(-30, float(gain.min()) - 3) / 10)
+    unit = np.array([np.cos(el) * np.sin(az), np.cos(el) * np.cos(az), np.sin(el)])
+    return az, el, gain, floor, unit * ((gain - floor) / -floor), unit * 10 ** (gain / 10)
+
+
+def draw_pattern_3d(rows, out, title):
+    """Export a spherical dB plot, a sky polar map and legacy power rendering.
+
+    The spherical grid marks azimuth, elevation and relative-gain radii.
+    A companion sky map uses zenith distance as radius and gain as colour,
+    making directional coverage visible without gain-induced overlap. Every
+    input row contributes one scatter point per panel; neither interpolation
+    nor downsampling is performed. Disable depth shading to preserve dB colours.
     """
     import matplotlib.pyplot as plt
 
-    az = np.radians([r['azimuth_deg'] for r in rows])
-    el = np.radians([r['elevation_deg'] for r in rows])
-    gain = np.array([r['relative_gain_db'] for r in rows], dtype=float)
-    radius = 10 ** (gain / 10)
+    az, el, gain, floor, xyz, power_xyz = pattern_coordinates(rows)
+    samples = sum(int(r.get('sample_count', r.get('count', 0))) for r in rows)
+    caption = f'{len(rows):,} direction bins; {samples:,} observations'
+    fig = plt.figure(figsize=(15, 7))
+    ax = fig.add_subplot(121, projection='3d')
+    # Draw latitude arcs and azimuth spokes on the unit upper hemisphere.
+    circle = np.linspace(0, 2 * np.pi, 181)
+    elevation = np.linspace(0, np.pi / 2, 91)
+    for degree in (0, 30, 60):
+        angle = np.radians(degree)
+        ax.plot(np.cos(angle) * np.sin(circle), np.cos(angle) * np.cos(circle),
+                np.full_like(circle, np.sin(angle)), color='gray', alpha=.35, lw=.7)
+        ax.text(0, np.cos(angle), np.sin(angle), f'  El {degree} deg', fontsize=8)
+    for degree in range(0, 360, 45):
+        angle = np.radians(degree)
+        ax.plot(np.cos(elevation) * np.sin(angle), np.cos(elevation) * np.cos(angle),
+                np.sin(elevation), color='gray', alpha=.35, lw=.7)
+        label = {0: 'N / 0', 90: 'E / 90', 180: 'S / 180', 270: 'W / 270'}.get(degree, str(degree))
+        ax.text(1.08 * np.sin(angle), 1.08 * np.cos(angle), 0, label, fontsize=8)
+    # Concentric horizon rings carry the actual dB labels of the shifted radius.
+    for db in np.arange(floor + 10, 1, 10):
+        radius = (db - floor) / -floor
+        ax.plot(radius * np.sin(circle), radius * np.cos(circle), np.zeros_like(circle),
+                color='gray', alpha=.3, lw=.6)
+        ax.text(-radius, 0, 0, f'{db:g} dB', fontsize=7)
+    points = ax.scatter(*xyz, c=gain, cmap='viridis', vmin=floor, vmax=0,
+                        s=12, depthshade=False)
+    ax.set(xlim=(-1.15, 1.15), ylim=(-1.15, 1.15), zlim=(0, 1.1),
+           title=f'3D spherical pattern: dB radius\nCentre = {floor:g} dB; outer shell = 0 dB')
+    ax.set_box_aspect((2.3, 2.3, 1.1))
+    ax.set_axis_off()
+    sky = fig.add_subplot(122, projection='polar')
+    sky.set_theta_zero_location('N')
+    sky.set_theta_direction(-1)
+    sky.scatter(az, 90 - np.degrees(el), c=gain, cmap='viridis', vmin=floor, vmax=0, s=12)
+    sky.set_ylim(0, 90)
+    sky.set_thetagrids(range(0, 360, 45), ['N', '45°', 'E', '135°', 'S', '225°', 'W', '315°'])
+    sky.set_yticks([0, 30, 60, 90], ['Zenith', 'El 60°', 'El 30°', 'El 0°'])
+    sky.set_title('Sky coverage: azimuth / elevation\nColour = relative gain (dB)', pad=24)
+    fig.colorbar(points, ax=[ax, sky], label='Relative gain (dB)', shrink=.65, pad=.07)
+    fig.suptitle(f'{title}\n{caption}', fontsize=13)
+    fig.savefig(Path(out) / 'pattern_3d.png', dpi=160, bbox_inches='tight')
+    plt.close(fig)
+
+    # Preserve the physical linear-power view for comparisons with older runs.
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection='3d')
-    points = ax.scatter(radius * np.cos(el) * np.sin(az),
-                        radius * np.cos(el) * np.cos(az), radius * np.sin(el),
-                        c=gain, cmap='viridis', s=20)
+    points = ax.scatter(*power_xyz, c=gain, cmap='viridis', s=12, depthshade=False)
     ax.set(xlabel='East', ylabel='North', zlabel='Up',
-           title=f'{title}\nRelative pattern (linear power radius)',
+           title=f'{title}\nLinear power radius; {caption}',
            xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
     ax.set_box_aspect((1, 1, 1))
     fig.colorbar(points, ax=ax, label='Relative gain (dB)', shrink=.65)
-    fig.savefig(Path(out) / 'pattern_3d.png', dpi=160, bbox_inches='tight')
+    fig.savefig(Path(out) / 'pattern_3d_linear.png', dpi=160, bbox_inches='tight')
     plt.close(fig)
+    return dict(plotted_bins=len(rows), samples=samples, db_floor=float(floor),
+                radius='(relative_gain_db - db_floor) / (0 - db_floor)',
+                sky_map='Azimuth clockwise from north; radius=90-elevation; colour=gain dB',
+                linear_plot='pattern_3d_linear.png', downsampling=False)
 
 
 def interpolate_nodes(nodes, circular=False, max_gap_deg=30, step_deg=.5):
@@ -275,12 +341,12 @@ def export_combined(patterns, out, cut_width=10, azimuth_cut=0, elevation_cut=45
     save_csv(out / 'pattern_3d.csv', spatial,
              ['azimuth_deg', 'elevation_deg', 'theta_deg', 'phi_deg', 'relative_gain_db',
               'sample_count', 'source_bin_count', 'source_groups', 'between_bin_std_db'])
-    draw_pattern_3d(spatial, out, 'Combined estimate; individual signal peaks aligned to 0 dB')
+    rendering = draw_pattern_3d(spatial, out, 'Combined estimate; individual signal peaks aligned to 0 dB')
     metadata['pattern_3d'] = dict(bins=len(spatial), source_bins=len(patterns),
                                  samples=sum(r['sample_count'] for r in spatial),
                                  aggregation='Count-weighted dB mean at equal azimuth/elevation bin centres',
                                  interpolation='None; observed direction bins only',
-                                 radius='Relative power: 10**(relative_gain_db/10)',
+                                 rendering=rendering,
                                  csv='pattern_3d.csv', plot='pattern_3d.png')
     (out / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
     return metadata

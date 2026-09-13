@@ -150,12 +150,15 @@ class MultiGNSSTests(unittest.TestCase):
                 gp.main()
                 self.assertEqual(plot.call_count, 5)
             self.assertTrue((folder / 'out' / 'combined' / 'pattern_3d.png').is_file())
+            self.assertTrue((folder / 'out' / 'combined' / 'pattern_3d_linear.png').is_file())
             with (folder / 'out' / 'combined' / 'pattern_3d.csv').open() as stream:
                 spatial = list(csv.DictReader(stream))
             sources = {g for row in spatial for g in row['source_groups'].split(';')}
             self.assertEqual(sources, {'G_1', 'R_1', 'E_7', 'C_1', 'J_1'})
             self.assertEqual(sum(int(row['sample_count']) for row in spatial), 5)
             metadata = json.loads((folder / 'out' / 'metadata.json').read_text())
+            self.assertEqual(metadata['combined']['pattern_3d']['rendering']['plotted_bins'], len(spatial))
+            self.assertFalse(metadata['combined']['pattern_3d']['rendering']['downsampling'])
             self.assertEqual(set(metadata['groups']), {'G_1', 'R_1', 'E_7', 'C_1', 'J_1'})
             with (folder / 'out' / 'pattern.csv').open() as f:
                 rows = list(csv.DictReader(f))

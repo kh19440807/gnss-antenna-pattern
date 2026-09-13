@@ -639,8 +639,8 @@ def plot_pattern(rows, out, args):
 
     Use a noninteractive backend for batch runs and close figures after saving.
     Observed bins remain discrete: interpolation belongs to the separate
-    combined exporter. The 3D radius represents relative power, 10**(dB/10),
-    while colour preserves the logarithmic relative gain.
+    combined exporter. The default 3D radius uses a shifted dB scale with
+    a companion sky polar map. A separate linear-power plot is also saved.
     """
     os.environ.setdefault('MPLCONFIGDIR', '/tmp/gnss-antenna-matplotlib')
     import matplotlib

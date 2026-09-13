@@ -156,9 +156,9 @@ The images below show combined estimates from GPS (`G_1`), Galileo (`E_7`), GLON
 
 ![Combined elevation antenna-pattern cut at north-facing azimuth zero](docs/elevation_cut.png)
 
-**Combined 3D pattern.** East/North/Up coordinates locate observed direction bins. Radius represents relative linear power, while colour represents relative gain in dB. The scatter plot does not fill unobserved directions with an interpolated surface.
+**Combined 3D pattern.** The left panel shows azimuth, elevation and a shifted dB radius on a spherical grid. The right panel shows sky coverage in polar coordinates, with zenith at the centre and relative gain encoded by colour. The scatter plot does not fill unobserved directions with an interpolated surface.
 
-![Combined 3D antenna-pattern scatter plot with linear-power radius and gain in dB as colour](docs/pattern_3d.png)
+![Combined spherical dB antenna pattern and polar sky coverage map](docs/pattern_3d.png)
 
 ### Combined interpolated cuts
 
@@ -202,7 +202,9 @@ Every retained constellation/signal group generates `pattern_3d.png`, including 
 
 The default combined export additionally creates `combined/pattern_3d.png` and `combined/pattern_3d.csv`. It uses all observed 2D direction bins, independently of cut angles or widths. Bins at equal azimuth **and** elevation are averaged in dB using observation counts, retaining each group's existing 0 dB peak reference without renormalizing the merged peak. The CSV records angles, relative gain, counts, contributing groups and between-bin spread. Metadata records the 3D aggregation settings.
 
-All 3D figures use local East/North/Up axes, relative power `10**(gain_dB/10)` as radius and gain in dB as colour. They are scatter plots of observed bins; missing directions are not interpolated into a surface. The combined result retains the frequency and group-offset limitations described above. `--no-combined` disables both combined cuts and combined 3D output. The standalone `combined_patterns.py` command also regenerates the combined 3D files from an existing `pattern.csv`.
+The default `pattern_3d.png` pairs a 3D spherical plot with a polar sky map. Azimuth is clockwise from true north and elevation runs from horizon to zenith. The 3D display radius is `(gain_dB - floor_dB) / (0 - floor_dB)`, with a floor below the minimum gain rounded down to a multiple of 10 dB (at most -30 dB). This is a graphical dB scale, not a power ratio. The sky map radius is zenith distance (`90 - elevation`) and its colour shows gain, so weak directions remain visible. Each figure reports the number of plotted bins and contributing observations.
+
+All bins are plotted without downsampling. Raw observations have already been aggregated into direction bins; combined bins additionally merge matching azimuth/elevation across signal groups. The old `10**(gain_dB/10)` radius compressed -20 dB points to 0.01 and -30 dB points to 0.001, hiding many points near the origin. That physical power-ratio rendering remains available as `pattern_3d_linear.png`. Combined metadata records `pattern_3d.rendering.plotted_bins`, the dB floor and the absence of downsampling. They are scatter plots of observed bins; missing directions are not interpolated into a surface. The combined result retains the frequency and group-offset limitations described above. `--no-combined` disables both combined cuts and combined 3D output. The standalone `combined_patterns.py` command also regenerates the combined 3D files from an existing `pattern.csv`.
 
 ### Signal-specific outputs
 
@@ -221,7 +223,8 @@ With multiple groups, root-level `samples.csv` and `pattern.csv` are concatenate
 | elevation_cut.csv / elevation_cut.png | Elevation pattern near 0-degree azimuth by default |
 | theta_cut.png | Theta cut near a fixed phi |
 | phi_cut.png | Phi cut near a fixed theta |
-| pattern_3d.png | 3D scatter with relative power ratio as radius and relative gain in dB as colour |
+| pattern_3d.png | Spherical dB-radius pattern and polar sky coverage map, with plotted bin count |
+| pattern_3d_linear.png | Legacy 3D scatter with relative power ratio as radius |
 | metadata.json | Run settings, accepted/rejected counts, model assumptions and limitations |
 
 `--bin-deg 5` sets the directional bin width, which must divide 90 degrees exactly. The default principal cuts are the **15-degree elevation horizontal cut and the north–south/east–west vertical planes**. The north–south plane combines azimuths 0 and 180 degrees; east–west combines 90 and 270 degrees. Vertical CSV `side` values are N/S/E/W. `plane_angle_deg` is 0 at the north/east horizon, 90 at zenith and 180 at the south/west horizon. Horizontal rows use `side=horizontal` and azimuth as `plane_angle_deg`. All cuts retain their group's full-pattern 0 dB peak reference. Azimuth runs clockwise from true north; elevation runs from the horizon to zenith.
