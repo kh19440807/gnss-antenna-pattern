@@ -7,10 +7,31 @@ import unittest
 
 import numpy as np
 
-from combined_patterns import merge_nodes, interpolate_nodes
+from combined_patterns import merge_nodes, merge_spatial_nodes, interpolate_nodes
 
 
 class CombinedTests(unittest.TestCase):
+    def test_spatial_merge(self):
+        # Equal azimuth alone must not collapse distinct elevation bins.
+        # North's circular seam is equivalent, and all five systems contribute.
+        rows = [dict(signal_group=g, azimuth_deg=az, elevation_deg=el,
+                     relative_gain_db=gain, count=count)
+                for g, az, el, gain, count in [
+                    ('G_1', 0, 15, 0, 1), ('E_7', 360, 15, -20, 3),
+                    ('R_1', 0, 45, -5, 2), ('C_1', 90, 15, -10, 4),
+                    ('J_1', 0, 45, -15, 2)]]
+        nodes = merge_spatial_nodes(rows)
+        self.assertEqual(len(nodes), 3)
+        by_direction = {(n['azimuth_deg'], n['elevation_deg']): n for n in nodes}
+        self.assertEqual(by_direction[0, 15]['relative_gain_db'], -15)
+        self.assertEqual(by_direction[0, 15]['source_groups'], 'E_7;G_1')
+        self.assertEqual(by_direction[0, 45]['relative_gain_db'], -10)
+        self.assertEqual(sum(n['sample_count'] for n in nodes), 12)
+        self.assertEqual(max(n['relative_gain_db'] for n in nodes), -10)
+        self.assertEqual(by_direction[0, 45]['theta_deg'], 45)
+        with self.assertRaises(ValueError):
+            merge_spatial_nodes([dict(rows[0], elevation_deg=float('nan'))])
+
     def test_weighted_merge(self):
         # Unequal sample counts distinguish a weighted dB mean from equal-group averaging.
         points = [dict(signal_group=g, plane_angle_deg=15, relative_gain_db=y, count=n)

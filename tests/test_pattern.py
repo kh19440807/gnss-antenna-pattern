@@ -157,6 +157,32 @@ class Tests(unittest.TestCase):
             with self.assertRaises(OSError):
                 gp.read_nmea([a, folder / 'missing.log'])
 
+    def test_binary_contamination(self):
+        # Bad bytes must neither abort buffered decoding nor silently change a
+        # C/N0 field. Require a new fix after contamination, even across files.
+        fix = b'$GPRMC,000000,A,0000,N,00000,E,0,0,010124,,,A\n'
+        good = b'$GPGSV,1,1,01,01,80,000,45\n'
+        damaged = b'$GPGSV,1,1,01,02,80,000,4\xb55\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            for suffix in ('.log', '.log.gz'):
+                with self.subTest(suffix=suffix):
+                    first, second = folder / ('first' + suffix), folder / ('second' + suffix)
+                    payloads = [fix + good + damaged + b'\xb5\x62\xff\n',
+                                good.replace(b'01,80', b'03,80') +
+                                fix.replace(b'000000,A', b'000001,A') + good + b'\xff']
+                    for path, payload in zip((first, second), payloads):
+                        path.write_bytes(gzip.compress(payload) if suffix.endswith('.gz') else payload)
+                    samples, stats = gp.read_nmea([first, second])
+                    self.assertEqual(len(samples), 2)
+                    self.assertEqual([r[4] for r in samples], [45, 45])
+                    self.assertEqual(stats['non_ascii_line'], 3)
+                    self.assertEqual(stats['gsv_without_fix'], 1)
+            nav = folder / 'bad.nav'
+            nav.write_bytes(nav_text().encode('ascii') + b'\xb5\n')
+            with self.assertRaises(UnicodeDecodeError):
+                gp.read_nav(nav)
+
     def test_orbit(self):
         # Check a synthetic circular position and reception geometry against known geometric expectations.
         with tempfile.TemporaryDirectory() as tmp:

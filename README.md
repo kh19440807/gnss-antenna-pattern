@@ -57,6 +57,8 @@ If the published product does not yet cover the latest observations, retry later
 
 ## Inputs
 
+Non-ASCII bytes in NMEA logs do not stop processing. Each affected line is skipped and counted as `non_ascii_line` in metadata `skipped`. Bytes are not deleted from measurement fields. After a skipped line, GSV observations wait for a fresh valid RMC/GGA fix to avoid using a stale time or position. This also applies to `.gz` inputs; RINEX decoding remains strict.
+
 - RMC sentences containing a date, time and valid position, plus supported GSV sentences below, are required. Check the receiver specification to confirm that GSV SNR represents C/N0 in dB-Hz.
 - GSV inherits the preceding valid RMC/GGA time and position. An initial RMC is required. Check timing associations beforehand if the log contains long communication gaps or reordered sentences.
 - When GGA provides altitude and geoid separation, their sum supplies ellipsoidal height. Otherwise the initial fallback is `--height-m` (default 0 m).
@@ -130,6 +132,34 @@ The nearest healthy ephemeris within `--max-ephemeris-age` of toe is selected (d
 
 ## Outputs
 
+### Example plots
+
+The images below show combined estimates from GPS (`G_1`), Galileo (`E_7`), GLONASS (`R_1`) and BeiDou (`C_1`). In the cut plots, coloured points are signal-group bins, black crosses are count-weighted merged nodes, and black curves are PCHIP interpolation. Each input group has its own peak aligned to 0 dB; these examples illustrate relative receiving-system response rather than calibrated absolute antenna gain. Gaps in the curves indicate insufficient adjacent observations.
+
+**Horizontal cut at 15-degree elevation.** The polar panel follows compass bearings; the Cartesian panel shows relative gain against azimuth.
+
+![Combined horizontal antenna-pattern cut at 15-degree elevation, with polar and Cartesian panels](docs/horizontal_pattern.png)
+
+**North–south vertical cut.** Both sides of the upper hemisphere are shown, with zenith between north and south.
+
+![Combined north–zenith–south vertical antenna-pattern cut](docs/vertical_ns_pattern.png)
+
+**East–west vertical cut.** The corresponding vertical plane runs from east through zenith to west.
+
+![Combined east–zenith–west vertical antenna-pattern cut](docs/vertical_ew_pattern.png)
+
+**Additional azimuth cut at 45-degree elevation.** This uses the default fixed elevation for the configurable azimuth cut.
+
+![Combined azimuth antenna-pattern cut at 45-degree elevation](docs/azimuth_cut.png)
+
+**Additional elevation cut at 0-degree azimuth.** This shows the elevation response toward true north.
+
+![Combined elevation antenna-pattern cut at north-facing azimuth zero](docs/elevation_cut.png)
+
+**Combined 3D pattern.** East/North/Up coordinates locate observed direction bins. Radius represents relative linear power, while colour represents relative gain in dB. The scatter plot does not fill unobserved directions with an interpolated surface.
+
+![Combined 3D antenna-pattern scatter plot with linear-power radius and gain in dB as colour](docs/pattern_3d.png)
+
 ### Combined interpolated cuts
 
 By default, `output/combined/` contains a **horizontal azimuth cut at 15-degree elevation, a north–south vertical cut and an east–west vertical cut**, plus arbitrary azimuth/elevation cuts, combining points from all constellation/signal groups. Each figure has polar and Cartesian panels, group-coloured source points, weighted nodes and a black PCHIP curve.
@@ -165,6 +195,14 @@ python combined_patterns.py \
 ```
 
 The standalone command also accepts `--cut-width`, `--azimuth-cut` and `--elevation-cut`. Defaults are 10, 0 and 45 degrees, respectively; repeat the original settings if they differed. Reference: [SciPy PchipInterpolator](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html).
+
+### 3D patterns for all constellations and combined data
+
+Every retained constellation/signal group generates `pattern_3d.png`, including GPS, Galileo, GLONASS, BeiDou and QZSS. With multiple groups, look in their respective directories, for example `output/E_7/pattern_3d.png`; a single group writes to the output root. Titles identify the constellation and signal.
+
+The default combined export additionally creates `combined/pattern_3d.png` and `combined/pattern_3d.csv`. It uses all observed 2D direction bins, independently of cut angles or widths. Bins at equal azimuth **and** elevation are averaged in dB using observation counts, retaining each group's existing 0 dB peak reference without renormalizing the merged peak. The CSV records angles, relative gain, counts, contributing groups and between-bin spread. Metadata records the 3D aggregation settings.
+
+All 3D figures use local East/North/Up axes, relative power `10**(gain_dB/10)` as radius and gain in dB as colour. They are scatter plots of observed bins; missing directions are not interpolated into a surface. The combined result retains the frequency and group-offset limitations described above. `--no-combined` disables both combined cuts and combined 3D output. The standalone `combined_patterns.py` command also regenerates the combined 3D files from an existing `pattern.csv`.
 
 ### Signal-specific outputs
 

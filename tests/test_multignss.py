@@ -145,9 +145,16 @@ class MultiGNSSTests(unittest.TestCase):
             argv = ['prog', '--nmea', str(folder / 'input.nmea'), '--nav', str(folder / 'mixed.nav'),
                     '--reference-cn0', '45', '--gps-utc-offset', '18', '--gas-model', 'none',
                     '--output', str(folder / 'out'), '--no-progress']
-            with patch('sys.argv', argv), patch.object(gp, 'plot_pattern') as plot, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            with patch('sys.argv', argv), patch.object(gp, 'plot_pattern',
+                              side_effect=lambda rows, out, args: gp.draw_pattern_3d(rows, out, rows[0]['signal_group'])) as plot, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 gp.main()
                 self.assertEqual(plot.call_count, 5)
+            self.assertTrue((folder / 'out' / 'combined' / 'pattern_3d.png').is_file())
+            with (folder / 'out' / 'combined' / 'pattern_3d.csv').open() as stream:
+                spatial = list(csv.DictReader(stream))
+            sources = {g for row in spatial for g in row['source_groups'].split(';')}
+            self.assertEqual(sources, {'G_1', 'R_1', 'E_7', 'C_1', 'J_1'})
+            self.assertEqual(sum(int(row['sample_count']) for row in spatial), 5)
             metadata = json.loads((folder / 'out' / 'metadata.json').read_text())
             self.assertEqual(set(metadata['groups']), {'G_1', 'R_1', 'E_7', 'C_1', 'J_1'})
             with (folder / 'out' / 'pattern.csv').open() as f:
@@ -156,5 +163,6 @@ class MultiGNSSTests(unittest.TestCase):
             # Different measured levels must be independently normalized, never pooled.
             self.assertTrue(all(float(row['relative_gain_db']) == 0 for row in rows))
             for group in metadata['groups']:
+                self.assertGreater((folder / 'out' / group / 'pattern_3d.png').stat().st_size, 0)
                 self.assertTrue((folder / 'out' / group / 'horizontal_pattern.csv').is_file())
                 self.assertTrue((folder / 'out' / group / 'metadata.json').is_file())

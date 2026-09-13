@@ -38,6 +38,57 @@ def merge_nodes(points):
     return nodes
 
 
+def merge_spatial_nodes(patterns):
+    """Merge full-sky bins only when both azimuth and elevation agree.
+
+    Preserve each input group's peak normalization and average bin medians
+    in dB with observation counts as weights, just as for combined cuts.
+    Unlike cut projection, different elevations must remain distinct. No
+    unobserved direction is interpolated, and the merged peak is not reset.
+    """
+    elevations = defaultdict(list)
+    for row in patterns:
+        az, el = float(row['azimuth_deg']), float(row['elevation_deg'])
+        if not math.isfinite(az) or not math.isfinite(el) or not 0 <= el <= 90:
+            raise ValueError('3D bins require finite azimuth and elevation in [0, 90] degrees')
+        elevations[round(el, 9)].append(dict(row, plane_angle_deg=az % 360))
+    result = []
+    for elevation, rows in sorted(elevations.items()):
+        for node in merge_nodes(rows):
+            azimuth = node.pop('plane_angle_deg')
+            result.append(dict(azimuth_deg=azimuth, elevation_deg=elevation,
+                               theta_deg=90 - elevation, phi_deg=azimuth, **node))
+    return result
+
+
+def draw_pattern_3d(rows, out, title):
+    """Plot observed direction bins in local east/north/up coordinates.
+
+    Radius is relative power 10**(gain_dB/10), not field amplitude. Colour
+    encodes gain in dB. Use identical axis limits for every signal and the
+    combined estimate, preserving missing directions as gaps in a scatter
+    plot rather than filling them with an unsupported surface.
+    """
+    import matplotlib.pyplot as plt
+
+    az = np.radians([r['azimuth_deg'] for r in rows])
+    el = np.radians([r['elevation_deg'] for r in rows])
+    gain = np.array([r['relative_gain_db'] for r in rows], dtype=float)
+    radius = 10 ** (gain / 10)
+    fig = plt.figure(figsize=(8, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    points = ax.scatter(radius * np.cos(el) * np.sin(az),
+                        radius * np.cos(el) * np.cos(az), radius * np.sin(el),
+                        c=gain, cmap='viridis', s=20)
+    ax.set(xlabel='East', ylabel='North', zlabel='Up',
+           title=f'{title}\nRelative pattern (linear power radius)',
+           xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    ax.set_box_aspect((1, 1, 1))
+    fig.colorbar(points, ax=ax, label='Relative gain (dB)', shrink=.65)
+    fig.savefig(Path(out) / 'pattern_3d.png', dpi=160, bbox_inches='tight')
+    plt.close(fig)
+
+
 def interpolate_nodes(nodes, circular=False, max_gap_deg=30, step_deg=.5):
     """Return shape-preserving PCHIP samples only within connected observed arcs.
 
@@ -165,13 +216,15 @@ def draw_combined(name, points, nodes, curve, out, group_colors, floor, title, c
 
 def export_combined(patterns, out, cut_width=10, azimuth_cut=0, elevation_cut=45, max_gap_deg=30):
     # Deferred import lets the standalone command reuse the same cut definitions.
-    """Export five combined cuts from independently normalized signal-group bins.
+    """Export five combined cuts and a full 3D pattern from signal-group bins.
 
     Reuse the main module cut selectors, combine equal-angle bins by counts,
     and interpolate connected nodes without extrapolation. Each cut saves
     source points, weighted nodes, curve samples and a PNG; metadata records
     the assumptions and counts. Peak alignment is illustrative and does not
     estimate transmitter offsets or calibrate cross-frequency antenna gain.
+    The separate 3D CSV and scatter plot merge equal azimuth/elevation bins
+    across the full observed sky without interpolation or peak renormalization.
     """
     from gnss_antenna_pattern import principal_plane_cuts, directional_cuts
     os.environ.setdefault('MPLCONFIGDIR', '/tmp/gnss-antenna-matplotlib')
@@ -217,6 +270,18 @@ def export_combined(patterns, out, cut_width=10, azimuth_cut=0, elevation_cut=45
         draw_combined(name, points, nodes, curve, out, colors, floor, titles[name], circular, labels)
         metadata['cuts'][name] = dict(source_bins=len(points), samples=sum(p['count'] for p in points),
                                     nodes=len(nodes), curve_points=len(curve), segments=len({r['segment_id'] for r in curve}))
+    # Full 3D merging uses every direction bin, independent of cut widths.
+    spatial = merge_spatial_nodes(patterns)
+    save_csv(out / 'pattern_3d.csv', spatial,
+             ['azimuth_deg', 'elevation_deg', 'theta_deg', 'phi_deg', 'relative_gain_db',
+              'sample_count', 'source_bin_count', 'source_groups', 'between_bin_std_db'])
+    draw_pattern_3d(spatial, out, 'Combined estimate; individual signal peaks aligned to 0 dB')
+    metadata['pattern_3d'] = dict(bins=len(spatial), source_bins=len(patterns),
+                                 samples=sum(r['sample_count'] for r in spatial),
+                                 aggregation='Count-weighted dB mean at equal azimuth/elevation bin centres',
+                                 interpolation='None; observed direction bins only',
+                                 radius='Relative power: 10**(relative_gain_db/10)',
+                                 csv='pattern_3d.csv', plot='pattern_3d.png')
     (out / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
     return metadata
 

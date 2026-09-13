@@ -20,7 +20,7 @@ from urllib.request import urlopen
 import numpy as np
 
 from atmosphere import StandardGasModel
-from combined_patterns import export_combined
+from combined_patterns import export_combined, draw_pattern_3d
 from gnss_signals import SYSTEM_NAMES, TALKERS, satellite_id, frequency_mhz, native_time, healthy, parse_signal_values
 
 # Calendar origin for elapsed seconds; native constellation offsets are applied separately.
@@ -142,14 +142,16 @@ def automatic_nav(samples, cache_dir, refresh=False):
     return records, sources
 
 
-def open_text(path):
-    """Open plain or gzip-compressed navigation/NMEA text in strict ASCII mode.
+def open_text(path, errors='strict'):
+    """Open plain or gzip-compressed ASCII text with a chosen decoding policy.
 
     Compression is selected by the .gz suffix. Strict decoding exposes corrupt
     or incompatible input instead of silently changing fixed-width fields.
+    NMEA callers use replacement markers to detect and skip contaminated lines;
+    navigation files retain the strict default.
     """
     return (gzip.open if str(path).endswith('.gz') else open)(
-        path, 'rt', encoding='ascii', errors='strict')
+        path, 'rt', encoding='ascii', errors=errors)
 
 
 def coordinate(value, hemisphere):
@@ -208,8 +210,16 @@ def read_nmea(path, signal_id=None, default_height=0.0, systems='GRECJ'):
     seen = set()
     paths = [path] if isinstance(path, (str, os.PathLike)) else path
     for source in paths:
-        with open_text(source) as stream:
+        with open_text(source, errors='replace') as stream:
             for line in stream:
+                # Never delete bad bytes inside a numeric field: that could turn
+                # a damaged measurement into a different, apparently valid value.
+                # Skip the entire contaminated line and require a fresh fix,
+                # because that line might have contained a time/position update.
+                if '\ufffd' in line:
+                    stats['non_ascii_line'] += 1
+                    epoch, position = None, None
+                    continue
                 try:
                     f = nmea_fields(line)
                     if not f:
@@ -678,20 +688,10 @@ def plot_pattern(rows, out, args):
             ax.text(.5, .5, 'No observations in this cut', transform=ax.transAxes, ha='center')
         fig.savefig(out / (name + '.png'), dpi=160, bbox_inches='tight')
         plt.close(fig)
-    t, p = np.radians(theta), np.radians(phi)
-    radius = 10 ** (gain / 10)
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    points = ax.scatter(radius * np.sin(t) * np.sin(p), radius * np.sin(t) * np.cos(p),
-                        radius * np.cos(t), c=gain, cmap='viridis', s=20)
-    ax.set(xlabel='East', ylabel='North', zlabel='Up', title='Relative pattern (linear power radius)')
-    ax.set_box_aspect((1, 1, 1))
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-1, 1)
-    ax.set_zlim(-1, 1)
-    fig.colorbar(points, ax=ax, label='Relative gain (dB)', shrink=.65)
-    fig.savefig(out / 'pattern_3d.png', dpi=160, bbox_inches='tight')
-    plt.close(fig)
+    # Every retained constellation/signal uses the same ENU rendering path.
+    groups = sorted({r['signal_group'] for r in rows})
+    label = ', '.join(f'{SYSTEM_NAMES[g[0]]} ({g})' for g in groups)
+    draw_pattern_3d(rows, out, label)
 
 
 def main():
