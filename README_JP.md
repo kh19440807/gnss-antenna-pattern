@@ -1,5 +1,7 @@
 # gnss-antenna-pattern
 
+通常の NMEA ログから、設置状態の GNSS 受信パターンを推定します。RAWX や RINEX 観測ファイルは不要です。
+
 [English](README.md)
 
 NMEA の GNSS C/N0 と RINEX 航法データから、受信系の**相対アンテナパターン**を衛星系・信号別に推定します。

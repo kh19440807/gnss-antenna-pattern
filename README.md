@@ -1,5 +1,7 @@
 # gnss-antenna-pattern
 
+Estimate installed GNSS receiving patterns from ordinary NMEA logs — no RAWX or RINEX observation file required.
+
 [Japanese](README_JP.md)
 
 Estimate **relative receiving-system antenna patterns** from NMEA GNSS C/N0 measurements and RINEX navigation data, separately for each constellation and signal. GPS, Galileo, GLONASS, BeiDou and QZSS are all selected by default.
