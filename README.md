@@ -244,3 +244,17 @@ python3 -m unittest discover -s tests -v
 Synthetic data tests cover satellite numbering, time scales and frequencies for five constellations, the BeiDou GEO transformation, GLONASS comparison against an independent integrator, and separate constellation/signal exports. Positioning-level validation against external precise orbits remains separate work.
 
 Specification references: [IGS RINEX 3.05](https://files.igs.org/pub/data/format/rinex305.pdf), [Trimble GSV](https://receiverhelp.trimble.com/alloy-gnss/en-us/NMEA-0183messages_GSV.html). Signal IDs: [DATAGNSS NMEA 4.11](https://docs.datagnss.com/common/common_protocol_nmea/). Orbit calculations: [ESA GNSS satellite coordinates](https://gssc.esa.int/navipedia/index.php/Computation_of_GNSS_Satellite_Coordinates), [RTKLIB broadcast ephemeris implementation](https://github.com/tomojitakasu/RTKLIB/blob/master/src/ephemeris.c).
+
+## Contact
+
+For bug reports, feature requests and usage questions, please open a [GitHub issue](https://github.com/kh19440807/gnss-antenna-pattern/issues).
+
+For collaboration or private inquiries, contact [alice.higuchi@trident-global.net](mailto:alice.higuchi@trident-global.net).
+
+NMEA logs contain receiver location information. Remove location information before attaching logs to a public issue, or contact us by email to discuss sharing them privately.
+
+## License
+
+This project's code and accompanying documentation are licensed under the [MIT License](LICENSE). Copyright (c) 2026 kh19440807.
+
+Commercial use, modification and redistribution are permitted subject to retaining the copyright and license notices. The software is provided without warranty; see `LICENSE` for the full terms. Third-party dependencies and external data remain subject to their respective licenses and terms.

@@ -294,3 +294,17 @@ python3 -m unittest discover -s tests -v
 仕様参考: [IGS RINEX 3.05](https://files.igs.org/pub/data/format/rinex305.pdf)、[Trimble GSV](https://receiverhelp.trimble.com/alloy-gnss/en-us/NMEA-0183messages_GSV.html)。
 信号 ID 参考: [DATAGNSS NMEA 4.11](https://docs.datagnss.com/common/common_protocol_nmea/)。
 軌道計算参考: [ESA GNSS satellite coordinates](https://gssc.esa.int/navipedia/index.php/Computation_of_GNSS_Satellite_Coordinates)、[RTKLIB の放送軌道実装](https://github.com/tomojitakasu/RTKLIB/blob/master/src/ephemeris.c)。
+
+## お問い合わせ
+
+不具合報告・機能要望・使い方の質問は、[GitHub Issues](https://github.com/kh19440807/gnss-antenna-pattern/issues) へお願いします。
+
+共同研究などのご相談や非公開のお問い合わせは、[alice.higuchi@trident-global.net](mailto:alice.higuchi@trident-global.net) へご連絡ください。
+
+NMEA ログには受信位置が含まれます。公開の Issue に添付する前に位置情報を取り除くか、非公開での共有方法についてメールでご相談ください。
+
+## ライセンス
+
+本プロジェクトのコードと同梱ドキュメントは、[MIT License](LICENSE) で公開しています。著作権表示は Copyright (c) 2026 kh19440807 です。
+
+著作権表示とライセンス文を保持する条件で、商用利用・改変・再配布が可能です。本ソフトウェアは無保証で提供します。全文は `LICENSE` を参照してください。第三者の依存ライブラリや外部データには、それぞれのライセンス・利用条件が適用されます。
